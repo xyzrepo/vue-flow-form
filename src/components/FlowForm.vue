@@ -125,7 +125,7 @@
   </div>
 </template>
 
-<script>
+<script setup>
   /*!
     Copyright (c) 2020 - present, DITDOT Ltd. - MIT Licence
     https://github.com/ditdot-dev/vue-flow-form
@@ -137,15 +137,15 @@
   import LanguageModel from '../models/LanguageModel'
   import { IsMobile } from '../mixins/IsMobile'
   import { ComponentInstance } from '../mixins/ComponentInstance'
-
-  export default {
-    name: 'FlowForm',
-
-    components: {
-      FlowFormQuestion
-    },
-    
-    props: {
+import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onMounted, watch } from '@vue/runtime-core'
+import { useSlots, useAttrs } from 'vue'
+  const $slots = useSlots()
+  const isIos = IsMobile.isIos
+  const isMobile = IsMobile.isMobile
+  const setInstance = ComponentInstance.setInstance
+  const getInstance = ComponentInstance.getInstance
+// props
+const props = defineProps({
       questions: {
         type: Array,
         validator: value => value.every(q => q instanceof QuestionModel)
@@ -176,138 +176,81 @@
         type: Boolean,
         default: true
       }
-    },
-
-    mixins: [
-      IsMobile,
-      ComponentInstance
-    ],
-
-    data() {
-      return {
-        questionRefs: [],
-        completed: false,
-        submitted: false,
-        activeQuestionIndex: 0,
-        questionList: [],
-        questionListActivePath: [],
-        reverse: false,
-        timerOn: false,
-        timerInterval: null,
-        time: 0,
-        disabled: false
-      }
-    },
-
-    mounted() {
-      document.addEventListener('keydown', this.onKeyDownListener)
-      document.addEventListener('keyup', this.onKeyUpListener, true)
-      window.addEventListener('beforeunload', this.onBeforeUnload)
-
-      this.setQuestions()
-      this.checkTimer()
-    },
-
-    beforeUnmount() {
-      document.removeEventListener('keydown', this.onKeyDownListener)
-      document.removeEventListener('keyup', this.onKeyUpListener, true)
-      window.removeEventListener('beforeunload', this.onBeforeUnload)
-      
-      this.stopTimer()
-    },
-
-    beforeUpdate() {
-      this.questionRefs = []
-    },
-    
-    computed: {
-      numActiveQuestions() {
-        return this.questionListActivePath.length
-      },
-
-      activeQuestion() {
-        return this.questionListActivePath[this.activeQuestionIndex]
-      },
-
-      activeQuestionId() {
-        const question = this.questionModels[this.activeQuestionIndex]
-
-        if (this.isOnLastStep) {
-          return '_submit'
-        }
-
-        if (question && question.id) {
-          return question.id
-        }
-
-        return null
-      },
-
-      numCompletedQuestions() {
-        let num = 0
-
-        this.questionListActivePath.forEach(question => {
-          if (question.answered) {
-            ++num
-          }
-        })
-
-        return num
-      },
-
-      percentCompleted() {
-        if (!this.numActiveQuestions) {
-          return 0
-        }
-
-        return Math.floor((this.numCompletedQuestions / this.numActiveQuestions) * 100)
-      },
-
-      isOnLastStep() {
-        return this.numActiveQuestions > 0 && this.activeQuestionIndex === this.questionListActivePath.length
-      }, 
-
-      isOnTimerStartStep() {
-        if (this.activeQuestionId === this.timerStartStep) {
-          return true
-        }
-
-        if (!this.timerOn && !this.timerStartStep && this.activeQuestionIndex === 0) {
-          return true
-        }
-
-        return false
-      },
-
-      isOnTimerStopStep() {
-        if (this.submitted) {
-          return true
-        }
-        
-        if (this.activeQuestionId === this.timerStopStep) {
-          return true 
-        }
-
-        return false
-      },
-
-      questionModels: {
-        cache: false,
-
-        get() {
-          if (this.questions && this.questions.length) {
-            return this.questions
+    })
+const emit = defineEmits(['complete','submit','step','answer','timer'])
+// data refs
+const questionRefs = ref([]),
+const completed = ref(false),
+const submitted = ref(false),
+const activeQuestionIndex = ref(0),
+const questionList = ref([]),
+const questionListActivePath = ref([]),
+const reverse = ref(false),
+const timerOn = ref(false),
+const timerInterval = ref(null),
+const time = ref(0),
+const disabled = ref(false)
+onMounted(() => {
+  document.addEventListener('keydown', onKeyDownListener)
+  document.addEventListener('keyup', onKeyUpListener, true)
+  window.addEventListener('beforeunload', onBeforeUnload)
+  setQuestions()
+  checkTimer()
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onKeyDownListener)
+  document.removeEventListener('keyup', onKeyUpListener, true)
+  window.removeEventListener('beforeunload', onBeforeUnload)
+  stopTimer()
+})
+onBeforeUpdate(() => {
+  questionRefs.value = []
+})
+const numActiveQuestions = computed(() => questionListActivePath.value.length)
+const activeQuestion = computed(() => questionListActivePath.value[activeQuestionIndex.value])
+const activeQuestionId = computed(() => {
+  const question = questionModels.value[activeQuestionIndex.value]
+  if (isOnLastStep.value) { return '_submit' }
+  if (question && question.id) { return question.id }
+  return null
+})
+const numCompletedQuestions = computed(() => {
+  let num = 0
+  questionListActivePath.value.forEach(question => {
+    if (question.answered) { ++num }
+  })
+  return num
+})
+const percentCompleted = computed(() => {
+  if (!numActiveQuestions.value) { return 0 }
+  return Math.floor((numCompletedQuestions.value / numActiveQuestions.value) * 100)
+})
+const isOnLastStep = computed(() => numActiveQuestions.value > 0 && activeQuestionIndex.value === questionListActivePath.value.length)
+const isOnTimerStartStep = computed(() => {
+  if (activeQuestionId.value === props.timerStartStep) { return true }
+  if (!this.timerOn && !this.timerStartStep && activeQuestionIndex.value === 0) { return true }
+  return false
+})
+const isOnTimerStopStep = computed(() => {
+  if (submitted.value) { return true }
+  if (activeQuestionId.value === props.timerStopStep) { return true }
+  return false
+})
+const questionModels = computed({
+  get: () => {
+          if (props.questions && props.questions.length) {
+            return props.questions
           }
 
           const questions = []
 
-          if (!this.questions) {
+          if (!props.questions) {
             const classMap = {
               options: ChoiceOption,
               descriptionLink: LinkOption
             }
 
-            const defaultSlot = this.$slots.default()
+            const defaultSlot = $slots.default()
             let children = null
 
             if (defaultSlot && defaultSlot.length) {
@@ -322,7 +265,7 @@
                 .filter(q => q.type && q.type.name.indexOf('Question') !== -1)
                 .forEach(q => {
                   const props = q.props
-                  const componentInstance = this.getInstance(props.id)
+                  const componentInstance = getInstance(props.id)
                   let model = new QuestionModel()
 
                   if (componentInstance.question !== null) {
@@ -388,425 +331,395 @@
           }
 
           return questions
-        }
-      }
-    },
 
-    methods: {
-      setQuestionRef(el) {
-        this.questionRefs.push(el)
-      },
+  }
+})
+const setQuestionRef = (el) => { questionRefs.value.push(el) }
+/**
+ * Returns currently active question component (if any).
+ */
+const activeQuestionComponent = () => questionRefs.value[activeQuestionIndex.value]
+const setQuestions = () => {
+  setQuestionListActivePath()
+  setQuestionList()
+}
+/**
+ * This method goes through all questions and sets the ones
+ * that are in the current path (taking note of logic jumps)
+ */
+const setQuestionListActivePath = () => {
+  const questions = []
 
-      /**
-       * Returns currently active question component (if any).
-       */
-      activeQuestionComponent() {
-        return this.questionRefs[this.activeQuestionIndex]
-      },
+  if (!questionModels.value.length) { return }
 
-      setQuestions() {
-        this.setQuestionListActivePath()
-        this.setQuestionList()
-      },
+  let
+    index = 0,
+    serialIndex = 0,
+    nextId,
+    activeIndex = activeQuestionIndex.value
 
-      /**
-       * This method goes through all questions and sets the ones
-       * that are in the current path (taking note of logic jumps)
-       */
-      setQuestionListActivePath() {
-        const questions = []
+  do {
+    let question = questionModels.value[index]
 
-        if (!this.questionModels.length) {
-          return
-        }
-
-        let
-          index = 0,
-          serialIndex = 0,
-          nextId,
-          activeIndex = this.activeQuestionIndex
-
-        do {
-          let question = this.questionModels[index]
-
-          if (questions.some(q => q === question)) {
-            break
-          }
-          
-          question.setIndex(serialIndex)
-          question.language = this.language
-
-          questions.push(question)
-
-          if (!question.jump) {
-            ++index
-          } else if (question.answered) {
-            nextId = question.getJumpId()
-            
-            if (nextId) {
-              if (nextId === '_submit') {
-                index = this.questionModels.length
-              } else {
-                for (let i = 0; i < this.questionModels.length; i++) {
-                  if (this.questionModels[i].id === nextId) {
-                    if (i < index && questions.some(q => q === this.questionModels[i])) {
-                      question.answered = false
-                      activeIndex = i
-                      ++index
-                    } else {
-                      index = i
-                    }
-                    break
-                  }
-                }
-              }
-            } else {
-              ++index
-            }
-          } else {
-            index = this.questionModels.length
-          }
-
-          ++serialIndex
-        } while (index < this.questionModels.length)
-
-        this.questionListActivePath = questions
-        this.goToQuestion(activeIndex)
-      },
-
-      /**
-       * Sets the question list array
-       * (all questions up to, and including, the current one)
-       */
-      setQuestionList() {
-        const questions = []
-
-        for (let index = 0; index < this.questionListActivePath.length; index++) {
-          const question = this.questionListActivePath[index]
-
-          questions.push(question)
-
-          if (!question.answered) {
-            if (this.completed) {
-              // The "completed" status changed - user probably changed an
-              // already entered answer.
-              this.completed = false
-            }
-            break
-          }
-        }
-
-        this.questionList = questions
-      },
-
-      /**
-       * If we have any answered questions, notify user before leaving
-       * the page.
-       */
-      onBeforeUnload(event) {
-        if (this.activeQuestionIndex > 0 && !this.submitted) {
-          event.preventDefault()
-          event.returnValue = ''
-        }
-      },
-
-      /**
-       * Global key listeners, listen for Enter or Tab key events.
-       */
-      onKeyDownListener(e) {
-        if (e.key !== 'Tab' || this.submitted) {
-          return
-        }
-
-        if (e.shiftKey) {
-          e.stopPropagation()
-          e.preventDefault()
-
-          if (this.navigation) {
-            this.goToPreviousQuestion()
-          }
-        } else {
-          const q = this.activeQuestionComponent()
-
-          if (q.shouldFocus()) {
-            e.preventDefault()
-
-            q.focusField()
-          } else {
-            e.stopPropagation()
-
-            this.emitTab()
-            this.reverse = false
-          }
-        }
-      }, 
-
-      onKeyUpListener(e) {
-        if (e.shiftKey || ['Tab', 'Enter'].indexOf(e.key) === -1 || this.submitted) {
-          return
-        }
-
-        const q = this.activeQuestionComponent()
-
-        if (e.key === 'Tab' && q.shouldFocus()) {
-          q.focusField()
-        } else {
-          if (e.key === 'Enter') {
-            this.emitEnter()
-          } 
-
-          e.stopPropagation()
-          this.reverse = false
-        }
-      },
-
-      emitEnter() {
-        if (this.disabled) {
-          return
-        }
-
-        const q = this.activeQuestionComponent()
-
-        if (q) {
-          // Send enter event to the current question component
-          q.onEnter()
-        } else if (this.completed && this.isOnLastStep) {
-          // We're finished - submit form
-          this.submit()
-        }
-      },
-
-      emitTab() {
-        const q = this.activeQuestionComponent()
-
-        if (q) {
-          // Send tab event to the current question component
-          q.onTab()
-        } else {
-          this.emitEnter()
-        }
-      },
-
-      submit() {
-        this.emitSubmit()
-        this.submitted = true
-      },
-
-      emitComplete() {
-        this.$emit('complete', this.completed, this.questionList)
-      },
-
-      emitSubmit() {
-        this.$emit('submit', this.questionList)
-      },
-
-      /**
-       * Checks if we have another question and if we
-       * can jump to it.
-       */
-      isNextQuestionAvailable() {
-        if (this.submitted) {
-          return false
-        }
-
-        const q = this.activeQuestion
-        if (q && !q.required) {
-          return true
-        }
-
-        if (this.completed && !this.isOnLastStep) {
-          return true
-        }
-   
-        return this.activeQuestionIndex < this.questionList.length - 1
-      },
-
-      /**
-       * Triggered by the "answer" event in the Question component
-       */
-      onQuestionAnswered(question) {
-        if (question.isValid()) {
-          this.$emit('answer', question.question)
-
-          if (this.activeQuestionIndex < this.questionListActivePath.length) {
-            ++this.activeQuestionIndex
-          }
-         
-          this.$nextTick(() => {
-            this.reverse = false
-
-            this.setQuestions()
-            this.checkTimer()
-            // Nested $nextTick so we're 100% sure that setQuestions
-            // actually updated the question array
-            this.$nextTick(() => {
-              const q = this.activeQuestionComponent()
-
-              if (q) {
-                this.autofocus && q.focusField()
-                this.activeQuestionIndex = q.question.index
-              } else if (this.isOnLastStep) {
-                // No more questions left - set "completed" to true
-                this.completed = true
-                this.activeQuestionIndex = this.questionListActivePath.length
-                
-                this.$refs.button && this.$refs.button.focus()
-              }
-
-              this.$emit('step', this.activeQuestionId, this.activeQuestion)
-            })
-          })
-        } else if (this.completed) {
-          this.completed = false
-        }
-      },
-
-      /**
-       * Jumps to previous question.
-       */
-      goToPreviousQuestion() {
-        this.blurFocus()
+    if (questions.some(q => q === question)) {
+      break
+    }
     
-        if (this.activeQuestionIndex > 0 && !this.submitted) {
-          if (this.isOnTimerStopStep) {
-            this.startTimer()
-          }
+    question.setIndex(serialIndex)
+    question.language = this.language
 
-          --this.activeQuestionIndex
+    questions.push(question)
 
-          this.reverse = true
-
-          this.checkTimer()
-        }
-      },
-
-      /**
-       * Jumps to next question.
-       */
-      goToNextQuestion() {
-        this.blurFocus()
-
-        if (this.isNextQuestionAvailable()) {
-          this.emitEnter()
-        }
-
-        this.reverse = false
-      },
-
-      /**
-       * Jumps to question with specific index.
-       */
-      goToQuestion(index) {
-        if (isNaN(+index)) {
-          let questionIndex = this.activeQuestionIndex
-
-          this.questionListActivePath.forEach((question, _index) => {
-            if (question.id === index) {
-              questionIndex = _index
-            }
-          })
-
-          index = questionIndex
-        }
-
-        if (index !== this.activeQuestionIndex) {
-          this.blurFocus()
+    if (!question.jump) {
+      ++index
+    } else if (question.answered) {
+      nextId = question.getJumpId()
       
-          if (!this.submitted && index <= this.questionListActivePath.length - 1) {
-            // Check if we can actually jump to the wanted question.
-            do {
-              const previousQuestionsAnswered = 
-                this
-                  .questionListActivePath
-                  .slice(0, index)
-                  .every(q => q.answered)
-
-              if (previousQuestionsAnswered) {
-                break
+      if (nextId) {
+        if (nextId === '_submit') {
+          index = questionModels.value.length
+        } else {
+          for (let i = 0; i < questionModels.value.length; i++) {
+            if (questionModels.value[i].id === nextId) {
+              if (i < index && questions.some(q => q === questionModels.value[i])) {
+                question.answered = false
+                activeIndex = i
+                ++index
+              } else {
+                index = i
               }
-
-              --index
-            } while (index > 0)
-
-            this.reverse = index < this.activeQuestionIndex
-            this.activeQuestionIndex = index
-
-            this.checkTimer()
+              break
+            }
           }
         }
-      },
-
-      /**
-       * Removes focus from the currently focused DOM element.
-       */
-      blurFocus() {
-        document.activeElement && document.activeElement.blur && document.activeElement.blur()
-      },
-
-      checkTimer() {
-        if (this.timer) {
-          if (this.isOnTimerStartStep) {
-            this.startTimer()
-          } else if (this.isOnTimerStopStep) {
-            this.stopTimer()
-          }
-        }
-      },
-
-      startTimer() {
-        if (this.timer && !this.timerOn) {
-          this.timerInterval = setInterval(this.incrementTime, 1000)
-          this.timerOn = true
-        }
-      },
-
-      stopTimer() {
-        if (this.timerOn) {
-          clearInterval(this.timerInterval)
-        }
-
-        this.timerOn = false
-      },
-
-      incrementTime() {
-        ++this.time
-        
-        this.$emit('timer', this.time, this.formatTime(this.time))
-      },
-
-      formatTime(seconds) {
-        let
-          startIndex = 14,
-          length = 5
-            
-        if (seconds >= 60 * 60) {
-          startIndex = 11
-          length = 8
-        }
-
-        return new Date(1000 * seconds).toISOString().substr(startIndex, length)
-      },
-
-      setDisabled(state) {
-        this.disabled = state
-      },
-
-      reset() {
-        this.questionModels.forEach(question => question.resetAnswer())
-        this.goToQuestion(0)
+      } else {
+        ++index
       }
-    },
+    } else {
+      index = questionModels.value.length
+    }
 
-    watch: {
-      completed() {
-        this.emitComplete()
-      },
-      
-      submitted() {
-        this.stopTimer()
+    ++serialIndex
+  } while (index < questionModels.value.length)
+
+  questionListActivePath.value = questions
+  goToQuestion(activeIndex)
+}
+/**
+ * Sets the question list array
+ * (all questions up to, and including, the current one)
+ */
+const setQuestionList = () => {
+  const questions = []
+
+  for (let index = 0; index < questionListActivePath.value.length; index++) {
+    const question = questionListActivePath.value[index]
+
+    questions.push(question)
+
+    if (!question.answered) {
+      if (completed.value) {
+        // The "completed" status changed - user probably changed an
+        // already entered answer.
+        completed.value = false
       }
+      break
     }
   }
+
+  questionList.value = questions
+}
+/**
+ * If we have any answered questions, notify user before leaving
+ * the page.
+ */
+onBeforeUnload(event => {
+  if (activeQuestionIndex.value > 0 && !submitted.value) {
+    event.preventDefault()
+    event.returnValue = ''
+  }
+})
+/**
+ * Global key listeners, listen for Enter or Tab key events.
+ */
+const onKeyDownListener = (e) => {
+  if (e.key !== 'Tab' || submitted.value) {
+    return
+  }
+
+  if (e.shiftKey) {
+    e.stopPropagation()
+    e.preventDefault()
+
+    if (props.navigation) {
+      goToPreviousQuestion()
+    }
+  } else {
+    const q = activeQuestionComponent()
+
+    if (q.shouldFocus()) {
+      e.preventDefault()
+
+      q.focusField()
+    } else {
+      e.stopPropagation()
+
+      emitTab()
+      reverse.value = false
+    }
+  }
+}
+const onKeyUpListener = (e) => {
+    if (e.shiftKey || ['Tab', 'Enter'].indexOf(e.key) === -1 || submitted.value) {
+      return
+    }
+
+    const q = activeQuestionComponent()
+
+    if (e.key === 'Tab' && q.shouldFocus()) {
+      q.focusField()
+    } else {
+      if (e.key === 'Enter') {
+        emitEnter()
+      } 
+
+      e.stopPropagation()
+      reverse.value = false
+    }
+}
+const emitEnter = () => {
+  if (disabled.value) {
+    return
+  }
+
+  const q = activeQuestionComponent()
+
+  if (q) {
+    // Send enter event to the current question component
+    q.onEnter()
+  } else if (completed.value && isOnLastStep.value) {
+    // We're finished - submit form
+    submit()
+  }
+}
+const emitTab = () => {
+  const q = activeQuestionComponent()
+
+  if (q) {
+    // Send tab event to the current question component
+    q.onTab()
+  } else {
+    emitEnter()
+  }
+}
+const submit = () => { emitSubmit(); submitted.value = true }
+
+const emitComplete = () => { emit('complete', completed.value, questionList.value) },
+
+const emitSubmit = () => { emit('submit', questionList.value) },
+
+/**
+ * Checks if we have another question and if we
+ * can jump to it.
+ */
+const isNextQuestionAvailable = () => {
+  if (submitted.value) {
+    return false
+  }
+
+  const q = activeQuestion.value
+  if (q && !q.required) {
+    return true
+  }
+
+  if (completed.value && !isOnLastStep.value) {
+    return true
+  }
+
+  return activeQuestionIndex.value < questionList.value.length - 1
+}
+
+/**
+ * Triggered by the "answer" event in the Question component
+ */
+const onQuestionAnswered = (question) => {
+  if (question.isValid()) {
+    emit('answer', question.question)
+
+    if (activeQuestionIndex.value < questionListActivePath.value.length) {
+      ++activeQuestionIndex.value
+    }
+    
+    nextTick(() => {
+      reverse.value = false
+
+      setQuestions()
+      checkTimer()
+      // Nested $nextTick so we're 100% sure that setQuestions
+      // actually updated the question array
+      nextTick(() => {
+        const q = activeQuestionComponent()
+
+        if (q) {
+          props.autofocus && q.focusField()
+          activeQuestionIndex.value = q.question.index
+        } else if (isOnLastStep.value) {
+          // No more questions left - set "completed" to true
+          completed.value = true
+          activeQuestionIndex.value = questionListActivePath.value.length
+          
+          button && button.focus()
+        }
+
+        emit('step', activeQuestionId.value, activeQuestion.value)
+      })
+    })
+  } else if (completed.value) {
+    completed.value = false
+  }
+}
+
+/**
+ * Jumps to previous question.
+ */
+const goToPreviousQuestion = () => {
+  blurFocus()
+
+  if (activeQuestionIndex.value > 0 && !submitted.value) {
+    if (isOnTimerStopStep.value) {
+      startTimer()
+    }
+
+    --activeQuestionIndex.value
+
+    reverse.value = true
+
+    checkTimer()
+  }
+}
+
+/**
+ * Jumps to next question.
+ */
+const goToNextQuestion = () => {
+  blurFocus()
+
+  if (isNextQuestionAvailable()) {
+    emitEnter()
+  }
+
+  reverse.value = false
+}
+
+/**
+ * Jumps to question with specific index.
+ */
+const goToQuestion = (index) => {
+  if (isNaN(+index)) {
+    let questionIndex = activeQuestionIndex.value
+
+    questionListActivePath.value.forEach((question, _index) => {
+      if (question.id === index) {
+        questionIndex = _index
+      }
+    })
+
+    index = questionIndex
+  }
+
+  if (index !== activeQuestionIndex.value) {
+    this.blurFocus()
+
+    if (!submitted.value && index <= questionListActivePath.value.length - 1) {
+      // Check if we can actually jump to the wanted question.
+      do {
+        const previousQuestionsAnswered = 
+          questionListActivePath.value
+            .slice(0, index)
+            .every(q => q.answered)
+
+        if (previousQuestionsAnswered) {
+          break
+        }
+
+        --index
+      } while (index > 0)
+
+      reverse.value = index < activeQuestionIndex.value
+      activeQuestionIndex.value = index
+
+      checkTimer()
+    }
+  }
+}
+
+/**
+ * Removes focus from the currently focused DOM element.
+ */
+const blurFocus = () => {
+  document.activeElement && document.activeElement.blur && document.activeElement.blur()
+}
+
+const checkTimer = () => {
+  if (props.timer) {
+    if (isOnTimerStartStep.value) {
+      startTimer()
+    } else if (isOnTimerStopStep.value) {
+      stopTimer()
+    }
+  }
+}
+
+const startTimer = () => {
+  if (props.timer && !timerOn.value) {
+    timerInterval.value = setInterval(incrementTime, 1000)
+    timerOn.value = true
+  }
+}
+
+const stopTimer = () => {
+  if (timerOn.value) {
+    clearInterval(timerInterval.value)
+  }
+  timerOn.value = false
+}
+
+const incrementTime = () => {
+  ++time.value
+  
+  emit('timer', time.value, formatTime(time.value))
+}
+
+const formatTime = (seconds) => {
+  let
+    startIndex = 14,
+    length = 5
+      
+  if (seconds >= 60 * 60) {
+    startIndex = 11
+    length = 8
+  }
+
+  return new Date(1000 * seconds).toISOString().substr(startIndex, length)
+}
+
+const setDisabled = (state) => {
+  disabled.value = state
+}
+
+const reset = () => {
+  questionModels.value.forEach(question => question.resetAnswer())
+  goToQuestion(0)
+}
+
+watch(
+  () => completed(), 
+  () => { emitComplete() },
+)
+watch(
+  () => submitted(), 
+  () => { stopTimer() }
+)
 </script>
 
 <style lang="css">

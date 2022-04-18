@@ -16,10 +16,6 @@ if (typeof navigator !== 'undefined' && typeof document !== 'undefined') {
 
 // Mixin that adds `isMobile` and `isIos` data variables
 export const IsMobile = {
-  data() {
-    return {
       isIos,
       isMobile
-    }
-  }
 }
